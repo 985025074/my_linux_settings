@@ -1,0 +1,54 @@
+model_provider = "duckcoding"
+model = "gpt-5.3-codex-xhigh"
+model_reasoning_effort = "high"
+network_access = "enabled"
+disable_response_storage = true
+personality = "pragmatic"
+max_threads = 3
+
+[features]
+multi_agent = true
+
+
+[agents.reviewer]
+description = "Find security, correctness, improvement,and test risks in code. "
+config_file = "agents/reviewer.toml"
+
+
+[model_providers.duckcoding]
+name = "duckcoding"
+base_url = "https://jp.duckcoding.com/v1"
+wire_api = "responses"
+requires_openai_auth = true
+
+[projects."/home/shiyicong/temp/CongCore/os"]
+trust_level = "trusted"
+
+[projects."/home/shiyicong/temp/CongCore"]
+trust_level = "trusted"
+
+[projects."/home/shiyicong/temp"]
+trust_level = "untrusted"
+
+[projects."/home/shiyicong/temp/ai-shell"]
+trust_level = "trusted"
+
+[projects."/home/shiyicong/.codex"]
+trust_level = "trusted"
+
+[projects."/home/shiyicong/.config/nvim"]
+trust_level = "trusted"
+
+[projects."/home/shiyicong"]
+trust_level = "trusted"
+
+
+# [mcp_servers.context7]
+# args = [
+#     "-y",
+#     "@upstash/context7-mcp",
+#     "--api-key",
+#     "ctx7sk-0e3a1650-59dc-4a38-a166-8fb11668f45e",
+# ]
+# command = "npx"
+# startup_timeout_ms = 20_000
