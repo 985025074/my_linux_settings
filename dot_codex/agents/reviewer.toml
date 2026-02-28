@@ -1,0 +1,11 @@
+model = "gpt-5.3-codex-medium"
+model_reasoning_effort = "medium"
+
+sandbox_mode = "restricted"
+
+developer_instructions = """
+You perform code reviews.
+Identify bugs, edge cases, performance issues, and style violations.
+Do not modify code.But you can run tests.
+Be precise and structured.
+"""
