@@ -1,0 +1,18 @@
+{
+	"Println 快捷输入": {
+		"prefix": "pl",
+		"body": [
+			"fmt.Println($1)"
+		],
+		"description": "快速输入 fmt.Println"
+	},
+	"函数定义模板": {
+		"prefix": "fn",
+		"body": [
+			"func $1($2) $3 {",
+			"\t$0",
+			"}"
+		],
+		"description": "生成函数定义模板"
+	}
+}

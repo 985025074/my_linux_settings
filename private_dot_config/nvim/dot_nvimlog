@@ -1,0 +1,2 @@
+WRN 2026-02-12T10:54:26.679 ?.45382    server_start:199: Failed to start server: operation not permitted: /run/user/1001/nvim.45382.0
+WRN 2026-02-12T10:54:32.666 ?.45515    server_start:199: Failed to start server: operation not permitted: /run/user/1001/nvim.45515.0

@@ -1,0 +1,4 @@
+0000000000000000000000000000000000000000 b17cf6a3a672416be3265b3741b9b5a9069d8cd8 Kokona <985025074syc@gmail.com> 1756616632 +0800	commit (initial): my first commit
+b17cf6a3a672416be3265b3741b9b5a9069d8cd8 83e3b8f7ace4d72bb99f1f74b5b945839fb20bfc Kokona <985025074syc@gmail.com> 1756617007 +0800	commit: remove .github we dont need this.
+83e3b8f7ace4d72bb99f1f74b5b945839fb20bfc 382d3e03b29aa47e6876e0a9a8a9b04b1d0295da Kokona <985025074syc@gmail.com> 1757129641 +0800	commit: add many plugins and short cuts,TODO:add debug support
+382d3e03b29aa47e6876e0a9a8a9b04b1d0295da 87594efb7fb091e253e0bc9bcd4db0c2066ae980 Kokona <985025074syc@gmail.com> 1757234640 +0800	commit: add snippets support

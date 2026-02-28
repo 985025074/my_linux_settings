@@ -1,0 +1,16 @@
+{
+	"name": "custom-snippets",
+	"description": "My custom snippets",
+	"contributes": {
+		"snippets": [
+			{
+				"language": "go",
+				"path": "./go.json"
+			},
+			{
+				"language": "lua",
+				"path": "./lua.json"
+			}
+		]
+	}
+}
