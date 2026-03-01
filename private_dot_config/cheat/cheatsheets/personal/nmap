@@ -1,0 +1,6 @@
+ping局域网
+nmap -sn  子网地址/24
+探索服务 扫描端口
+nmap -sV 192.168.1.50
+系统检测 需要sudo
+nmap -O

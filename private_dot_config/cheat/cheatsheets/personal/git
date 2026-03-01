@@ -1,0 +1,17 @@
+在子目录中使用git
+git -C dir add
+显示单个文件的差异 -p 具体展示每个行的变化
+git log -p -- path/to/file
+行级别的检查 检查每一行何时添加
+git blame path/to/file
+强制恢复上一次操作merge
+git reset --hard HEAD~1
+undo 上一次操作 并产生一个新的commit
+git revert -m 1 <merge_commit_hash>
+拉取远端的 
+main 分支
+
+git pull 
+git checkout new feature
+git rebase main加入新修改
+
