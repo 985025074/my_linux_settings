@@ -6,10 +6,47 @@ return {
     config = function()
       local lint = require 'lint'
       lint.linters_by_ft = {
+        make = { 'checkmake' },
         markdown = { 'markdownlint' },
-        python = { 'flake8' },
+        python = { 'ruff' },
         go = { 'golangcilint' },
       }
+
+      local function resolve_linter(name)
+        local linter = lint.linters[name]
+        if type(linter) == 'function' then
+          linter = linter()
+        end
+        return linter
+      end
+
+      local function linter_is_available(name)
+        local linter = resolve_linter(name)
+        if not linter or not linter.cmd then
+          return false
+        end
+
+        local cmd = linter.cmd
+        if type(cmd) == 'function' then
+          local ok, resolved = pcall(cmd)
+          if not ok then
+            return false
+          end
+          cmd = resolved
+        end
+
+        return type(cmd) == 'string' and vim.fn.executable(cmd) == 1
+      end
+
+      local function available_linters_for_filetype(filetype)
+        local names = lint.linters_by_ft[filetype]
+        if not names then
+          return {}
+        end
+
+        return vim.tbl_filter(linter_is_available, names)
+      end
+
       -- 下面的意思是如果希望其他插件能够添加lint 不要这样做。而是按照下面的方法来
       --
       -- To allow other plugins to add linters to require('lint').linters_by_ft,
@@ -54,7 +91,10 @@ return {
           -- avoid superfluous noise, notably within the handy LSP pop-ups that
           -- describe the hovered symbol using Markdown.
           if vim.bo.modifiable then
-            lint.try_lint()
+            local names = available_linters_for_filetype(vim.bo.filetype)
+            if #names > 0 then
+              lint.try_lint(names)
+            end
           end
         end,
       })

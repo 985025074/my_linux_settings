@@ -96,6 +96,22 @@ ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets)
 #typeset -A ZSH_HIGHLIGHT_STYLES
 #ZSH_HIGHLIGHT_STYLES[comment]='fg=242'
 
+#
+# completion / fzf-tab
+#
+
+# Let fzf-tab own the completion UI instead of zsh's built-in menu.
+zstyle ':completion:*' menu no
+# Show completion groups in the picker.
+zstyle ':completion:*:descriptions' format '[%d]'
+# Reuse LS_COLORS so file candidates stay colorized inside fzf-tab.
+zstyle ':completion:*' list-colors ${(s.:.)LS_COLORS}
+# Seed the search box with the current word and allow group switching.
+zstyle ':fzf-tab:*' query-string input
+zstyle ':fzf-tab:*' switch-group '<' '>'
+# Keep the picker compact and anchored near the prompt.
+zstyle ':fzf-tab:*' fzf-flags --height=60% --layout=reverse
+
 # ------------------
 # Initialize modules
 # ------------------
@@ -138,9 +154,7 @@ unset key
 # Lines configured by zsh-newuser-install
 setopt autocd extendedglob nomatch notify
 # End of lines configured by zsh-newuser-install
-source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
 source /usr/share/autojump/autojump.zsh
-source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 #
 # ~/.bashrc
 #
@@ -159,14 +173,80 @@ export RUSTUP_UPDATE_ROOT="https://rsproxy.cn/rustup"
 export PATH="$HOME/.cargo/bin:$PATH"
 # this is for proxy
 #
-export all_proxy=http://127.0.0.1:20172
-export http_proxy=http://127.0.0.1:20172
-export https_proxy=http://127.0.0.1:20172
-
+export windows_proxy=http://100.75.45.123:15715
+export all_proxy=http://100.75.45.123:15715
+export http_proxy=http://100.75.45.123:15715
+export https_proxy=http://100.75.45.123:15715
+export no_proxy=localhost,127.0.0.1,::1
+# export all_proxy=http://127.0.0.1:20172
+# export http_proxy=http://127.0.0.1:20172
+# export https_proxy=http://127.0.0.1:20172
+#
 # To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-# this is for nvm
-source /usr/share/nvm/init-nvm.sh
+# nvm is expensive on startup. Keep the default Node bin on PATH for global
+# tools such as codex, and load nvm itself only on first use.
+export NVM_DIR="$HOME/.nvm"
+if [[ -r "$NVM_DIR/alias/default" ]]; then
+  typeset -g __nvm_default_alias __nvm_default_bin
+  __nvm_default_alias="$(<"$NVM_DIR/alias/default")"
+  __nvm_default_alias="${__nvm_default_alias//$'\r'/}"
+  if [[ -d "$NVM_DIR/versions/node/$__nvm_default_alias/bin" ]]; then
+    __nvm_default_bin="$NVM_DIR/versions/node/$__nvm_default_alias/bin"
+  else
+    local -a __nvm_default_matches
+    __nvm_default_matches=("$NVM_DIR"/versions/node/${__nvm_default_alias}*/bin(N))
+    if (( ${#__nvm_default_matches} )); then
+      __nvm_default_bin="${__nvm_default_matches[-1]}"
+    fi
+  fi
+  [[ -n "$__nvm_default_bin" ]] && path=("$__nvm_default_bin" $path)
+  unset __nvm_default_alias __nvm_default_bin __nvm_default_matches
+fi
+__load_nvm() {
+  unset -f __load_nvm nvm node npm npx pnpm yarn corepack
+  . /usr/share/nvm/nvm.sh --no-use
+}
+nvm() { __load_nvm; nvm "$@"; }
+node() { __load_nvm; node "$@"; }
+npm() { __load_nvm; npm "$@"; }
+npx() { __load_nvm; npx "$@"; }
+pnpm() { __load_nvm; pnpm "$@"; }
+yarn() { __load_nvm; yarn "$@"; }
+corepack() { __load_nvm; corepack "$@"; }
 
-source /home/shiyicong/.config/broot/launcher/bash/br
+# Load x-cmd on first use instead of every shell startup.
+__load_x_cmd() {
+  unset -f __load_x_cmd x c xw xx xd xg xwt i @ @gpt @gpt4 @gpt4t @gpt41 @gpt41m @gpt41n @gpt4o @gpt4om @gpto1 @gpto1m @en @zh
+  if [[ ! -f "$HOME/.x-cmd.root/X" ]]; then
+    print -u2 "x-cmd bootstrap not found: $HOME/.x-cmd.root/X"
+    return 127
+  fi
+  . "$HOME/.x-cmd.root/X"
+}
+typeset -ga __x_cmd_lazy_triggers=(
+  x c xw xx xd xg xwt i
+  '@' '@gpt' '@gpt4' '@gpt4t' '@gpt41' '@gpt41m' '@gpt41n'
+  '@gpt4o' '@gpt4om' '@gpto1' '@gpto1m' '@en' '@zh'
+)
+for __x_cmd_trigger in "${__x_cmd_lazy_triggers[@]}"; do
+  eval "${__x_cmd_trigger}() { __load_x_cmd || return \$?; ${__x_cmd_trigger} \"\$@\"; }"
+done
+unset __x_cmd_trigger __x_cmd_lazy_triggers
+
+# ── Yazi ──────────────────────────────────────────────────────────────────────
+# 退出时自动切换到 yazi 当前目录
+function y() {
+    local tmp="$(mktemp -t "yazi-cwd.XXXXXX")"
+    yazi "$@" --cwd-file="$tmp"
+    if cwd="$(cat -- "$tmp")" && [ -n "$cwd" ] && [ "$cwd" != "$PWD" ]; then
+        builtin cd -- "$cwd"
+    fi
+    rm -f -- "$tmp"
+}
+
+# ── Zoxide（如已安装）─────────────────────────────────────────────────────────
+if command -v zoxide &>/dev/null; then
+    eval "$(zoxide init zsh)"
+fi

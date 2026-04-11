@@ -15,3 +15,11 @@ git pull
 git checkout new feature
 git rebase main加入新修改
 
+# git 三个 reset的说明
+首先所有未跟踪的不受影响
+
+soft 保留暂存区修改成 
+回复状态
+mixed 丢弃暂存区状态。但是实际的文件还在 所以会显示 成 Modified
+Hard :不仅丢弃暂存区状态 而且会把实际文件中的修改也变了
+

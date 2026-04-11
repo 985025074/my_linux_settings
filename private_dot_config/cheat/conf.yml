@@ -42,20 +42,20 @@ cheatpaths:
 
   # Cheatsheets that are tagged "personal" are stored here by default:
   - name: personal
-    path: /home/shiyicong/.config/cheat/cheatsheets/personal
+    path: /home/hypertest/.config/cheat/cheatsheets/personal
     tags: [ personal ]
     readonly: false
 
   # Cheatsheets that are tagged "work" are stored here by default:
   - name: work
-    path: /home/shiyicong/.config/cheat/cheatsheets/work
+    path: /home/hypertest/.config/cheat/cheatsheets/work
     tags: [ work ]
     readonly: false
 
   # Community cheatsheets (https://github.com/cheat/cheatsheets):
-  # To install: git clone https://github.com/cheat/cheatsheets /home/shiyicong/.config/cheat/cheatsheets/community
+  # To install: git clone https://github.com/cheat/cheatsheets /home/hypertest/.config/cheat/cheatsheets/community
   # - name: community
-  #   path: /home/shiyicong/.config/cheat/cheatsheets/community
+  #   path: /home/hypertest/.config/cheat/cheatsheets/community
   #   tags: [ community ]
   #   readonly: true
 

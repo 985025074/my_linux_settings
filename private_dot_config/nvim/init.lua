@@ -188,6 +188,13 @@ vim.keymap.set('n', '<leader>gbdd', '<cmd>lua vim.diagnostic.disable(0)<CR>', { 
 vim.keymap.set('n', '<leader>gbde', '<cmd>lua vim.diagnostic.enable(0)<CR>', { desc = 'Enable diagnostics for current buffer' })
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+vim.keymap.set('n', 'gl', function()
+  vim.diagnostic.open_float {
+    scope = 'line',
+    border = 'rounded',
+    source = 'if_many',
+  }
+end, { desc = 'Open line diagnostics' })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -231,6 +238,71 @@ vim.api.nvim_create_autocmd('TextYankPost', {
     vim.hl.on_yank()
   end,
 })
+
+local function run_make_target(target)
+  local command = 'silent make'
+  if target ~= nil and target ~= '' then
+    command = command .. ' ' .. target
+  end
+
+  local ok, err = pcall(vim.cmd, command)
+  local qf = vim.fn.getqflist { size = 0 }
+  if qf.size > 0 then
+    vim.cmd 'cwindow'
+  else
+    vim.cmd 'cclose'
+  end
+
+  if not ok then
+    vim.notify(tostring(err), vim.log.levels.ERROR)
+  end
+end
+
+vim.api.nvim_create_autocmd('FileType', {
+  desc = 'Buffer-local C and Makefile workflow',
+  group = vim.api.nvim_create_augroup('kickstart-c-make', { clear = true }),
+  pattern = { 'c', 'cpp', 'make' },
+  callback = function(event)
+    local bo = vim.bo[event.buf]
+    bo.makeprg = 'make'
+
+    if bo.filetype == 'make' then
+      bo.expandtab = false
+      bo.tabstop = 4
+      bo.shiftwidth = 4
+      bo.softtabstop = 0
+    else
+      bo.expandtab = true
+      bo.tabstop = 4
+      bo.shiftwidth = 4
+      bo.softtabstop = 4
+      bo.cindent = true
+    end
+
+    local map = function(lhs, target, desc)
+      vim.keymap.set('n', lhs, function()
+        run_make_target(target)
+      end, { buffer = event.buf, desc = desc })
+    end
+
+    map('<leader>mb', '', '[M]ake [B]uild')
+    map('<leader>mr', 'run', '[M]ake [R]un')
+    map('<leader>mt', 'test', '[M]ake [T]est')
+    map('<leader>mc', 'clean', '[M]ake [C]lean')
+  end,
+})
+
+vim.api.nvim_create_autocmd('BufWritePre', {
+  desc = 'Trim trailing whitespace before formatting Rust files',
+  group = vim.api.nvim_create_augroup('kickstart-rust-trim-whitespace', { clear = true }),
+  pattern = '*.rs',
+  callback = function()
+    local view = vim.fn.winsaveview()
+    vim.cmd [[silent! keeppatterns %s/\s\+$//e]]
+    vim.fn.winrestview(view)
+  end,
+})
+
 if vim.g.vscode then
   -- VSCode extension
   -- [[ Install `lazy.nvim` plugin manager ]]
@@ -265,7 +337,9 @@ else
     {
       'nmac427/guess-indent.nvim',
       config = function()
-        require('guess-indent').setup {}
+        require('guess-indent').setup {
+          filetype_exclude = { 'make' },
+        }
       end,
     },
     -- NOTE: Plugins can also be added by using a table,
@@ -286,22 +360,7 @@ else
     --        end,
     --    }
     --
-    -- Here is a more advanced example where we pass configuration
-    -- options to `gitsigns.nvim`.
-    --
-    -- See `:help gitsigns` to understand what the configuration keys do
-    { -- Adds git related signs to the gutter, as well as utilities for managing changes
-      'lewis6991/gitsigns.nvim',
-      opts = {
-        signs = {
-          add = { text = '+' },
-          change = { text = '~' },
-          delete = { text = '_' },
-          topdelete = { text = '‾' },
-          changedelete = { text = '~' },
-        },
-      },
-    },
+    -- gitsigns is fully configured in lua/kickstart/plugins/gitsigns.lua
 
     -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
     --
@@ -365,9 +424,200 @@ else
         spec = {
           { '<leader>s', group = '[S]earch' },
           { '<leader>t', group = '[T]oggle' },
+          { '<leader>T', group = '[T]est' },
           { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
         },
       },
+    },
+
+    {
+      'folke/flash.nvim',
+      event = 'VeryLazy',
+      ---@type Flash.Config
+      opts = {
+        modes = {
+          char = {
+            char_actions = function(_)
+              return {
+                [';'] = 'next',
+                [','] = 'prev',
+                ['f'] = 'right',
+                ['F'] = 'left',
+                ['t'] = 'right',
+                ['T'] = 'left',
+              }
+            end,
+          },
+          treesitter_search = {
+            remote_op = {
+              restore = true,
+              motion = true,
+            },
+          },
+        },
+      },
+      keys = {
+        {
+          's',
+          mode = { 'n', 'x', 'o' },
+          function()
+            require('flash').jump()
+          end,
+          desc = 'Flash',
+        },
+        {
+          'S',
+          mode = { 'n', 'x', 'o' },
+          function()
+            require('flash').treesitter()
+          end,
+          desc = 'Flash Treesitter',
+        },
+        {
+          'r',
+          mode = 'o',
+          function()
+            require('flash').remote()
+          end,
+          desc = 'Remote Flash',
+        },
+        {
+          'R',
+          mode = { 'o', 'x' },
+          function()
+            require('flash').treesitter_search()
+          end,
+          desc = 'Treesitter Search',
+        },
+        {
+          '<c-s>',
+          mode = 'c',
+          function()
+            require('flash').toggle()
+          end,
+          desc = 'Toggle Flash Search',
+        },
+      },
+    },
+
+    {
+      'folke/trouble.nvim',
+      cmd = 'Trouble',
+      opts = {},
+      keys = {
+        {
+          '<leader>xx',
+          '<cmd>Trouble diagnostics toggle<cr>',
+          desc = 'Diagnostics (Trouble)',
+        },
+        {
+          '<leader>xX',
+          '<cmd>Trouble diagnostics toggle filter.buf=0<cr>',
+          desc = 'Buffer Diagnostics (Trouble)',
+        },
+        {
+          '<leader>cs',
+          '<cmd>Trouble symbols toggle focus=false<cr>',
+          desc = 'Symbols (Trouble)',
+        },
+        {
+          '<leader>cl',
+          '<cmd>Trouble lsp toggle focus=false win.position=right<cr>',
+          desc = 'LSP List (Trouble)',
+        },
+        {
+          '<leader>xL',
+          '<cmd>Trouble loclist toggle<cr>',
+          desc = 'Location List (Trouble)',
+        },
+        {
+          '<leader>xQ',
+          '<cmd>Trouble qflist toggle<cr>',
+          desc = 'Quickfix List (Trouble)',
+        },
+      },
+    },
+
+    {
+      'stevearc/aerial.nvim',
+      opts = {
+        backends = { 'treesitter', 'lsp', 'markdown', 'man' },
+        layout = {
+          min_width = 28,
+          default_direction = 'prefer_right',
+        },
+      },
+      dependencies = {
+        'nvim-treesitter/nvim-treesitter',
+        'nvim-tree/nvim-web-devicons',
+      },
+      keys = {
+        {
+          '<leader>co',
+          '<cmd>AerialToggle!<cr>',
+          desc = 'Outline (Aerial)',
+        },
+        {
+          ']]',
+          '<cmd>AerialNext<cr>',
+          desc = 'Next Symbol',
+        },
+        {
+          '[[',
+          '<cmd>AerialPrev<cr>',
+          desc = 'Prev Symbol',
+        },
+      },
+    },
+
+    {
+      'MagicDuck/grug-far.nvim',
+      opts = {},
+      keys = {
+        {
+          '<leader>fr',
+          function()
+            require('grug-far').open()
+          end,
+          desc = 'Find and Replace',
+        },
+        {
+          '<leader>fR',
+          function()
+            require('grug-far').open {
+              prefills = {
+                search = vim.fn.expand '<cword>',
+              },
+            }
+          end,
+          desc = 'Find current word',
+        },
+        {
+          '<leader>fr',
+          mode = 'v',
+          function()
+            require('grug-far').with_visual_selection {
+              prefills = {
+                paths = vim.fn.expand '%',
+              },
+            }
+          end,
+          desc = 'Find and Replace selection',
+        },
+      },
+    },
+
+    {
+      'ActivityWatch/aw-watcher-vim',
+      event = 'VimEnter',
+      cond = function()
+        return vim.fn.executable 'curl' == 1
+      end,
+      config = function()
+        vim.schedule(function()
+          pcall(vim.cmd, 'AWStart')
+        end)
+      end,
     },
 
     -- NOTE: Plugins can specify dependencies.
@@ -426,11 +676,20 @@ else
           -- You can put your default mappings / updates / etc. in here
           --  All the info you're looking for is in `:help telescope.setup()`
           --
-          -- defaults = {
-          --   mappings = {
-          --     i = { ['<c-enter>'] = 'to_fuzzy_refine' },
-          --   },
-          -- },
+          defaults = {
+            mappings = {
+              i = {
+                ['<c-t>'] = function(...)
+                  return require('trouble.sources.telescope').open(...)
+                end,
+              },
+              n = {
+                ['<c-t>'] = function(...)
+                  return require('trouble.sources.telescope').open(...)
+                end,
+              },
+            },
+          },
           -- pickers = {}
           extensions = {
             ['ui-select'] = {
@@ -650,6 +909,19 @@ else
 
         -- Diagnostic Config
         -- See :help vim.diagnostic.Opts
+        local function format_virtual_diagnostic(diagnostic)
+          local message = diagnostic.message:gsub('%s+', ' '):gsub('^%s+', ''):gsub('%s+$', '')
+          local win_width = vim.api.nvim_win_get_width(0)
+          local cursor_col = vim.api.nvim_win_get_cursor(0)[2]
+          -- Leave padding for the prefix spacing (2) and some breathing room (4)
+          local available = win_width - cursor_col - 6
+          local max_width = math.max(20, math.min(available, 80))
+          if vim.fn.strdisplaywidth(message) <= max_width then
+            return message
+          end
+          return vim.fn.strcharpart(message, 0, max_width - 1) .. '…'
+        end
+
         vim.diagnostic.config {
           severity_sort = true,
           float = { border = 'rounded', source = 'if_many' },
@@ -663,17 +935,10 @@ else
             },
           } or {},
           virtual_text = {
+            current_line = true,
             source = 'if_many',
             spacing = 2,
-            format = function(diagnostic)
-              local diagnostic_message = {
-                [vim.diagnostic.severity.ERROR] = diagnostic.message,
-                [vim.diagnostic.severity.WARN] = diagnostic.message,
-                [vim.diagnostic.severity.INFO] = diagnostic.message,
-                [vim.diagnostic.severity.HINT] = diagnostic.message,
-              }
-              return diagnostic_message[diagnostic.severity]
-            end,
+            format = format_virtual_diagnostic,
           },
         }
 
@@ -682,6 +947,21 @@ else
         --  When you add blink.cmp, luasnip, etc. Neovim now has *more* capabilities.
         --  So, we create new capabilities with blink.cmp, and then broadcast that to the servers.
         local capabilities = require('blink.cmp').get_lsp_capabilities()
+
+        local vtsls_language_settings = {
+          inlayHints = {
+            includeInlayEnumMemberValueHints = true,
+            includeInlayFunctionLikeReturnTypeHints = true,
+            includeInlayFunctionParameterTypeHints = true,
+            includeInlayParameterNameHints = 'all',
+            includeInlayParameterNameHintsWhenArgumentMatchesName = false,
+            includeInlayPropertyDeclarationTypeHints = true,
+            includeInlayVariableTypeHints = false,
+          },
+          suggest = {
+            autoImports = true,
+          },
+        }
 
         -- Enable the following language servers
         --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
@@ -693,48 +973,46 @@ else
         --  - settings (table): Override the default settings passed when initializing the server.
         --        For example, to see the options for `lua_ls`, you could go to: https://luals.github.io/wiki/settings/
         local servers = {
-          clangd = {},
-          -- gopls = {},
-          rust_analyzer = {
-            settings = {
-              ['rust-analyzer'] = {
-                cargo = {
-                  allFeatures = true,
-                },
-                check = {
-                  command = 'clippy',
-                },
-                inlayHints = {
-                  bindingModeHints = {
-                    enable = true,
-                  },
-                  closureReturnTypeHints = {
-                    enable = 'always',
-                  },
-                  lifetimeElisionHints = {
-                    enable = 'skip_trivial',
-                  },
-                  parameterHints = {
-                    enable = true,
-                  },
-                  typeHints = {
-                    enable = true,
-                  },
-                },
-              },
+          clangd = {
+            cmd = {
+              'clangd',
+              '--background-index',
+              '--clang-tidy',
+              '--header-insertion=never',
+              '--completion-style=detailed',
+            },
+            init_options = {
+              clangdFileStatus = true,
             },
           },
+          -- gopls = {},
           -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
           --
           -- Some languages (like typescript) have entire language plugins that can be useful:
           --    https://github.com/pmizio/typescript-tools.nvim
           --
-          -- But for many setups, the LSP (`ts_ls`) will work just fine
-          -- ts_ls = {},
+          -- But for many setups, `vtsls` is a more capable choice for JS/TS monorepos.
+          vtsls = {
+            settings = {
+              javascript = vim.deepcopy(vtsls_language_settings),
+              typescript = vim.deepcopy(vtsls_language_settings),
+            },
+          },
           --
           gopls = {},
           jsonls = {},
-          pyright = {},
+          basedpyright = {
+            settings = {
+              basedpyright = {
+                analysis = {
+                  autoImportCompletions = true,
+                  autoSearchPaths = true,
+                  diagnosticMode = 'openFilesOnly',
+                  useLibraryCodeForTypes = true,
+                },
+              },
+            },
+          },
           lua_ls = {
             -- cmd = { ... },
             -- filetypes = { ... },
@@ -766,25 +1044,26 @@ else
         -- for you, so that they are available from within Neovim.
         local ensure_installed = vim.tbl_keys(servers or {})
         vim.list_extend(ensure_installed, {
+          'clang-format',
+          'checkmake',
           'stylua', -- Used to format Lua code
           'rustfmt',
+          'ruff',
         })
         require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
         require('mason-lspconfig').setup {
           ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
-          automatic_installation = false,
-          handlers = {
-            function(server_name)
-              local server = servers[server_name] or {}
-              -- This handles overriding only values explicitly passed
-              -- by the server configuration above. Useful when disabling
-              -- certain features of an LSP (for example, turning off formatting for ts_ls)
-              server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
-              require('lspconfig')[server_name].setup(server)
-            end,
-          },
+          automatic_enable = false,
         }
+
+        for server_name, server in pairs(servers) do
+          -- Neovim 0.11+ uses vim.lsp.config()/enable(); keep setup explicit so
+          -- Mason does not auto-enable extra installed servers like ts_ls.
+          server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+          vim.lsp.config(server_name, server)
+          vim.lsp.enable(server_name)
+        end
       end,
     },
 
@@ -796,7 +1075,11 @@ else
         {
           '<leader>f',
           function()
-            require('conform').format { async = true, lsp_format = 'fallback' }
+            require('conform').format {
+              async = false,
+              lsp_format = 'fallback',
+              timeout_ms = 3000,
+            }
           end,
           mode = '',
           desc = '[F]ormat buffer',
@@ -805,24 +1088,32 @@ else
       opts = {
         notify_on_error = false,
         format_on_save = function(bufnr)
-          --
-          -- Disable "format_on_save lsp_fallback" for languages that don't
-          -- have a well standardized coding style. You can add additional
-          -- languages here or re-enable it for the disabled ones.
-          local disable_filetypes = { c = true, cpp = true }
-          if disable_filetypes[vim.bo[bufnr].filetype] then
-            return nil
-          else
-            return {
-              timeout_ms = 500,
-              lsp_format = 'fallback',
-            }
+          local filetype = vim.bo[bufnr].filetype
+
+          if filetype == 'c' or filetype == 'cpp' then
+            local bufname = vim.api.nvim_buf_get_name(bufnr)
+            local dir = bufname ~= '' and vim.fs.dirname(bufname) or vim.uv.cwd()
+            local has_clang_format = dir and vim.fs.find({ '.clang-format', '_clang-format' }, { upward = true, path = dir })[1] ~= nil
+            if not has_clang_format then
+              return nil
+            end
           end
+
+          if filetype == 'make' then
+            return nil
+          end
+
+          return {
+            timeout_ms = 3000,
+            lsp_format = 'fallback',
+          }
         end,
         formatters_by_ft = {
+          c = { 'clang_format' },
+          cpp = { 'clang_format' },
           lua = { 'stylua' },
           -- Conform can also run multiple formatters sequentially
-          python = { 'isort', 'black' },
+          python = { 'ruff_fix', 'ruff_format' },
           go = { 'gofumpt' },
           rust = { 'rustfmt' },
           --
@@ -975,12 +1266,117 @@ else
         -- - sr)'  - [S]urround [R]eplace [)] [']
         require('mini.surround').setup()
 
+        -- Move current line or visual selection with Alt + hjkl.
+        require('mini.move').setup {
+          mappings = {
+            left = '<M-h>',
+            right = '<M-l>',
+            down = '<M-j>',
+            up = '<M-k>',
+            line_left = '<M-h>',
+            line_right = '<M-l>',
+            line_down = '<M-j>',
+            line_up = '<M-k>',
+          },
+          options = {
+            reindent_linewise = true,
+          },
+        }
+
+        -- Compare current buffer with the last saved version on disk.
+        local mini_diff = require 'mini.diff'
+        mini_diff.setup {
+          source = mini_diff.gen_source.save(),
+          view = {
+            -- Keep signcolumn free for gitsigns; highlight changed line numbers instead.
+            style = 'number',
+          },
+        }
+
+        local function is_regular_buffer(bufnr)
+          return vim.api.nvim_buf_is_loaded(bufnr) and vim.bo[bufnr].buftype == '' and vim.bo[bufnr].buflisted
+        end
+
+        local function ensure_mini_diff_enabled(bufnr)
+          if mini_diff.get_buf_data(bufnr) == nil and is_regular_buffer(bufnr) then
+            mini_diff.enable(bufnr)
+          end
+        end
+
+        vim.keymap.set('n', '<leader>do', function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          ensure_mini_diff_enabled(bufnr)
+          if mini_diff.get_buf_data(bufnr) == nil then
+            vim.notify('mini.diff 只在普通文件 buffer 中可用', vim.log.levels.WARN)
+            return
+          end
+          mini_diff.toggle_overlay(bufnr)
+        end, { desc = '[D]iff toggle [o]verlay vs last save' })
+        vim.keymap.set('n', '<leader>dt', mini_diff.toggle, { desc = '[D]iff [t]oggle vs last save' })
+
+        vim.schedule(function()
+          local bufnr = vim.api.nvim_get_current_buf()
+          ensure_mini_diff_enabled(bufnr)
+        end)
+
         -- Simple and easy statusline.
         --  You could remove this setup call if you don't like it,
         --  and try some other statusline plugin
         local statusline = require 'mini.statusline'
+        local visual_modes = {
+          v = true,
+          V = true,
+          ['\22'] = true,
+          s = true,
+          S = true,
+          ['\19'] = true,
+        }
+
+        local function selection_count()
+          if statusline.is_truncated(75) then
+            return ''
+          end
+
+          if not visual_modes[vim.fn.mode()] then
+            return ''
+          end
+
+          local chars = vim.fn.wordcount().visual_chars
+          if type(chars) ~= 'number' or chars <= 0 then
+            return ''
+          end
+
+          return string.format('Sel:%d', chars)
+        end
+
         -- set use_icons to true if you have a Nerd Font
-        statusline.setup { use_icons = vim.g.have_nerd_font }
+        statusline.setup {
+          use_icons = vim.g.have_nerd_font,
+          content = {
+            active = function()
+              local mode, mode_hl = statusline.section_mode { trunc_width = 120 }
+              local git = statusline.section_git { trunc_width = 40 }
+              local diff = statusline.section_diff { trunc_width = 75 }
+              local diagnostics = statusline.section_diagnostics { trunc_width = 75 }
+              local lsp = statusline.section_lsp { trunc_width = 75 }
+              local filename = statusline.section_filename { trunc_width = 140 }
+              local fileinfo = statusline.section_fileinfo { trunc_width = 120 }
+              local selection = selection_count()
+              local search = statusline.section_searchcount { trunc_width = 75 }
+              local location = statusline.section_location { trunc_width = 75 }
+
+              return statusline.combine_groups {
+                { hl = mode_hl, strings = { mode } },
+                { hl = 'MiniStatuslineDevinfo', strings = { git, diff, diagnostics, lsp } },
+                '%<',
+                { hl = 'MiniStatuslineFilename', strings = { filename } },
+                '%=',
+                { hl = 'MiniStatuslineFileinfo', strings = { fileinfo } },
+                { hl = mode_hl, strings = { selection, search, location } },
+              }
+            end,
+          },
+        }
 
         -- You can configure sections in the statusline by overriding their
         -- default behavior. For example, here we set the section for
@@ -997,10 +1393,35 @@ else
     { -- Highlight, edit, and navigate code
       'nvim-treesitter/nvim-treesitter',
       build = ':TSUpdate',
-      main = 'nvim-treesitter.configs', -- Sets main module to use for opts
+      main = 'nvim-treesitter',
       -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
       opts = {
-        ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'rust', 'vim', 'vimdoc' },
+        ensure_installed = {
+          'bash',
+          'c',
+          'diff',
+          'html',
+          'javascript',
+          'jsdoc',
+          'json',
+          'json5',
+          'jsonc',
+          'lua',
+          'luadoc',
+          'make',
+          'markdown',
+          'markdown_inline',
+          'python',
+          'query',
+          'regex',
+          'rust',
+          'toml',
+          'tsx',
+          'typescript',
+          'vim',
+          'vimdoc',
+          'yaml',
+        },
         -- Autoinstall languages that are not installed
         auto_install = true,
         highlight = {
@@ -1069,6 +1490,12 @@ else
       },
     },
   })
+
+  -- Ensure Treesitter queries (including folds) are on runtimepath for this plugin layout.
+  local treesitter_runtime = vim.fn.stdpath 'data' .. '/lazy/nvim-treesitter/runtime'
+  if (vim.uv or vim.loop).fs_stat(treesitter_runtime) then
+    vim.opt.rtp:append(treesitter_runtime)
+  end
 end
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et

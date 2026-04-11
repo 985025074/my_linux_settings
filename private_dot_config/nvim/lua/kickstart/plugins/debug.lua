@@ -23,6 +23,7 @@ return {
 
     -- Add your own debuggers here
     'leoluz/nvim-dap-go',
+    'mfussenegger/nvim-dap-python',
   },
   keys = {
     -- Basic debugging keymaps, feel free to change to your liking!
@@ -80,6 +81,103 @@ return {
   config = function()
     local dap = require 'dap'
     local dapui = require 'dapui'
+    local uv = vim.uv or vim.loop
+
+    local function cargo_metadata()
+      local current_file = vim.api.nvim_buf_get_name(0)
+      local search_from = current_file ~= '' and vim.fs.dirname(current_file) or vim.fn.getcwd()
+      local cargo_toml = vim.fs.find('Cargo.toml', { upward = true, path = search_from })[1]
+      if not cargo_toml then
+        return nil
+      end
+
+      local output = vim.fn.system {
+        'cargo',
+        'metadata',
+        '--format-version',
+        '1',
+        '--no-deps',
+        '--manifest-path',
+        cargo_toml,
+      }
+
+      if vim.v.shell_error ~= 0 then
+        return nil
+      end
+
+      local ok, decoded = pcall(vim.json.decode, output)
+      if not ok then
+        return nil
+      end
+
+      decoded.current_manifest = cargo_toml
+      return decoded
+    end
+
+    local function rust_executable_path()
+      local metadata = cargo_metadata()
+      local default_dir = vim.fn.getcwd() .. '/target/debug/'
+      if not metadata then
+        return vim.fn.input('Path to executable: ', default_dir, 'file')
+      end
+
+      local package
+      for _, item in ipairs(metadata.packages or {}) do
+        if item.manifest_path == metadata.current_manifest then
+          package = item
+          break
+        end
+      end
+
+      if not package then
+        return vim.fn.input('Path to executable: ', default_dir, 'file')
+      end
+
+      local current_file = vim.api.nvim_buf_get_name(0)
+      local current_stem = vim.fn.fnamemodify(current_file, ':t:r')
+      local candidate
+      local bin_targets = {}
+
+      for _, target in ipairs(package.targets or {}) do
+        if vim.tbl_contains(target.kind or {}, 'bin') then
+          table.insert(bin_targets, target)
+          if current_file ~= '' and target.src_path == current_file then
+            candidate = target.name
+            break
+          end
+        end
+      end
+
+      if not candidate then
+        if package.default_run and package.default_run ~= '' then
+          candidate = package.default_run
+        elseif #bin_targets == 1 then
+          candidate = bin_targets[1].name
+        else
+          for _, target in ipairs(bin_targets) do
+            if target.name == current_stem then
+              candidate = target.name
+              break
+            end
+          end
+        end
+      end
+
+      local target_dir = metadata.target_directory or (vim.fn.getcwd() .. '/target')
+      local executable = target_dir .. '/debug/'
+      if candidate and candidate ~= '' then
+        executable = executable .. candidate
+        if vim.fn.has 'win32' == 1 then
+          executable = executable .. '.exe'
+        end
+
+        if uv.fs_stat(executable) then
+          return executable
+        end
+      end
+
+      return vim.fn.input('Path to executable: ', executable, 'file')
+    end
 
     require('mason-nvim-dap').setup {
       -- Makes a best effort to setup the various debuggers with
@@ -95,6 +193,8 @@ return {
       ensure_installed = {
         -- Update this to ensure that you have the debuggers for the langs you want
         'delve',
+        'codelldb',
+        'python',
       },
     }
 
@@ -144,5 +244,35 @@ return {
         detached = vim.fn.has 'win32' == 0,
       },
     }
+
+    local codelldb_cmd = vim.fn.stdpath 'data' .. '/mason/bin/codelldb'
+    if not uv.fs_stat(codelldb_cmd) then
+      codelldb_cmd = 'codelldb'
+    end
+
+    dap.adapters.codelldb = {
+      type = 'executable',
+      command = codelldb_cmd,
+      detached = vim.fn.has 'win32' == 0,
+    }
+
+    dap.configurations.rust = {
+      {
+        name = 'Launch Rust binary (auto)',
+        type = 'codelldb',
+        request = 'launch',
+        program = rust_executable_path,
+        cwd = '${workspaceFolder}',
+        stopOnEntry = false,
+      },
+    }
+
+    local debugpy_python = vim.fn.stdpath 'data' .. '/mason/packages/debugpy/venv/bin/python'
+    if not uv.fs_stat(debugpy_python) then
+      debugpy_python = 'python3'
+    end
+
+    require('dap-python').setup(debugpy_python)
+    require('dap-python').test_runner = 'pytest'
   end,
 }

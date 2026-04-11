@@ -1,14 +1,247 @@
+local rust_toolchain_rust_analyzer_cache = {}
+
+local function read_rust_toolchain(root)
+  if not root then
+    return nil
+  end
+
+  local rust_toolchain_toml = root .. '/rust-toolchain.toml'
+  if vim.fn.filereadable(rust_toolchain_toml) == 1 then
+    for _, line in ipairs(vim.fn.readfile(rust_toolchain_toml)) do
+      local channel = line:match '^%s*channel%s*=%s*"(.-)"'
+      if channel then
+        return channel
+      end
+    end
+  end
+
+  local rust_toolchain = root .. '/rust-toolchain'
+  if vim.fn.filereadable(rust_toolchain) == 1 then
+    local first_line = vim.fn.readfile(rust_toolchain)[1]
+    if first_line and first_line ~= '' and not first_line:match '^%s*%[' then
+      return vim.trim(first_line)
+    end
+  end
+
+  return nil
+end
+
+local function resolve_rust_analyzer_cmd()
+  local bufname = vim.api.nvim_buf_get_name(0)
+  local start = bufname ~= '' and vim.fs.dirname(bufname) or vim.uv.cwd()
+  local root = start and vim.fs.root(start, { 'rust-toolchain.toml', 'rust-toolchain', 'Cargo.toml' }) or nil
+  local toolchain = read_rust_toolchain(root)
+
+  if toolchain then
+    local cached = rust_toolchain_rust_analyzer_cache[toolchain]
+    if cached ~= nil then
+      return cached
+    end
+
+    local rustup_which = vim.fn.systemlist { 'rustup', 'which', '--toolchain', toolchain, 'rust-analyzer' }
+    if vim.v.shell_error == 0 and #rustup_which > 0 and vim.fn.executable(rustup_which[1]) == 1 then
+      rust_toolchain_rust_analyzer_cache[toolchain] = { rustup_which[1] }
+      return rust_toolchain_rust_analyzer_cache[toolchain]
+    end
+  end
+
+  return { 'rust-analyzer' }
+end
+
 return {
   {
-    'preservim/vim-markdown',
+    'OXY2DEV/markview.nvim',
+    lazy = false,
+    keys = {
+      { '<leader>mm', '<cmd>Markview toggle<CR>', desc = '[M]arkview toggle' },
+      { '<leader>ms', '<cmd>Markview splitToggle<CR>', desc = '[M]arkview [S]plit toggle' },
+      { '<leader>mh', '<cmd>Markview hybridToggle<CR>', desc = '[M]arkview [H]ybrid toggle' },
+    },
+    opts = {
+      preview = {
+        icon_provider = 'devicons',
+      },
+    },
+  },
+  -- 纠正低效移动习惯并给出更高效的 motion 提示
+  {
+    'm4xshen/hardtime.nvim',
+    lazy = false,
+    dependencies = {
+      'MunifTanjim/nui.nvim',
+      {
+        'rcarriga/nvim-notify',
+        opts = {
+          minimum_width = 20,
+          render = 'minimal',
+          stages = 'static',
+          timeout = 1800,
+          top_down = true,
+        },
+      },
+    },
+    keys = {
+      { '<leader>tm', '<cmd>Hardtime toggle<CR>', desc = '[T]oggle Hardti[m]e' },
+      { '<leader>tM', '<cmd>Hardtime report<CR>', desc = 'Hardtime Report' },
+    },
+    opts = {
+      callback = function(text)
+        local ok, notify = pcall(require, 'notify')
+        if ok then
+          notify(text, vim.log.levels.INFO, {
+            hide_from_history = true,
+            render = 'minimal',
+            timeout = 1800,
+          })
+          return
+        end
+
+        vim.notify(text, vim.log.levels.INFO, { timeout = 1800 })
+      end,
+      max_time = 1500,
+      max_count = 4,
+      disable_mouse = false,
+      hints = {
+        ['jjjj'] = {
+          message = function()
+            return '试试 5j / <C-d>；代码结构跳转可用 ]]，同屏跳转可用 s / S (Flash).'
+          end,
+          length = 4,
+        },
+        ['kkkk'] = {
+          message = function()
+            return '试试 5k / <C-u>；代码结构跳转可用 [[，同屏跳转可用 s / S (Flash).'
+          end,
+          length = 4,
+        },
+        ['wwww'] = {
+          message = function()
+            return '别一直按 w：当前行用 f / t，同屏用 s (Flash)，更远用 / 搜索.'
+          end,
+          length = 4,
+        },
+        ['bbbb'] = {
+          message = function()
+            return '别一直按 b：当前行用 F / T，同屏用 s (Flash)，更远用 ? 搜索.'
+          end,
+          length = 4,
+        },
+        [';;;'] = {
+          message = function()
+            return '别一直追 ;：直接用 s (Flash) 或 S (Treesitter Flash).'
+          end,
+          length = 3,
+        },
+        [',,,'] = {
+          message = function()
+            return '别一直追 ,：直接用 s (Flash) 或 S (Treesitter Flash).'
+          end,
+          length = 3,
+        },
+      },
+    },
+  },
+  -- 终端里的平滑光标拖影，做成偏克制的一版
+  {
+    'sphamba/smear-cursor.nvim',
+    event = 'VeryLazy',
+    keys = {
+      { '<leader>ts', '<cmd>SmearCursorToggle<CR>', desc = '[T]oggle [S]mear cursor' },
+    },
+    opts = {
+      smear_between_buffers = true,
+      smear_between_neighbor_lines = true,
+      scroll_buffer_space = true,
+      smear_insert_mode = false,
+      smear_replace_mode = false,
+      smear_terminal_mode = false,
+      time_interval = 10,
+      stiffness = 0.68,
+      trailing_stiffness = 0.58,
+      damping = 0.93,
+      trailing_exponent = 1.8,
+      distance_stop_animating = 0.2,
+      max_length = 16,
+      transparent_bg_fallback_color = '#1a1b26',
+      filetypes_disabled = {
+        'aerial',
+        'checkhealth',
+        'help',
+        'lazy',
+        'mason',
+        'neo-tree',
+        'notify',
+        'qf',
+        'TelescopePrompt',
+        'trouble',
+      },
+    },
+  },
+  {
+    'keaising/im-select.nvim',
+    config = function()
+      require('im_select').setup {
+        default_im_select = 'keyboard-us',
+        default_command = 'fcitx5-remote',
+        set_default_events = { 'InsertLeave', 'CmdlineLeave', 'FocusGained' },
+        set_previous_events = { 'InsertEnter' },
+      }
+    end,
+  },
+  {
+    'theHamsta/nvim-dap-virtual-text',
+    opts = {
+      commented = true,
+      virt_text_pos = vim.fn.has 'nvim-0.10' == 1 and 'inline' or 'eol',
+    },
+  },
+  {
+    'stevearc/overseer.nvim',
+    cmd = { 'OverseerOpen', 'OverseerToggle', 'OverseerRun', 'OverseerShell', 'OverseerTaskAction' },
+    keys = {
+      { '<leader>or', '<cmd>OverseerRun<CR>', desc = 'Overseer run task' },
+      { '<leader>oo', '<cmd>OverseerToggle right<CR>', desc = 'Overseer toggle list' },
+      { '<leader>os', '<cmd>OverseerShell<CR>', desc = 'Overseer shell task' },
+      { '<leader>oa', '<cmd>OverseerTaskAction<CR>', desc = 'Overseer task action' },
+    },
+    opts = {
+      dap = true,
+      component_aliases = {
+        default = {
+          'on_exit_set_status',
+          'on_complete_notify',
+          { 'on_complete_dispose', require_view = { 'SUCCESS', 'FAILURE' } },
+          { 'on_output_quickfix', tail = true },
+          { 'open_output', on_complete = 'always', direction = 'vertical' },
+        },
+        default_vscode = {
+          'default',
+          'on_result_diagnostics',
+        },
+        default_builtin = {
+          'on_exit_set_status',
+          'on_complete_dispose',
+          { 'unique', soft = true },
+          { 'on_output_quickfix', tail = true },
+          { 'open_output', on_complete = 'always', direction = 'vertical' },
+        },
+      },
+      output = {
+        use_terminal = true,
+      },
+      task_list = {
+        direction = 'right',
+        min_width = 40,
+        max_width = { 80, 0.35 },
+        default_detail = 1,
+      },
+    },
   },
   {
     'folke/persistence.nvim',
     event = 'VimEnter',
     config = function(_, opts)
       require('persistence').setup(opts)
-      -- 添加会话选项，避免 Neotree 错误
-      vim.opt.sessionoptions = { 'buffers', 'curdir', 'tabpages', 'winsize', 'help', 'globals', 'skiprtp', 'folds' }
       vim.keymap.set('n', '<leader>ls', function()
         require('persistence').load()
       end, { desc = '加载当前目录的会话 load setion' })
@@ -72,30 +305,6 @@ return {
         -- 设置打开终端的快捷键
         open_mapping = [[<c-t>]], -- 使用Ctrl+t打开终端
 
-        -- 回调函数：终端创建、打开、关闭时触发
-        on_create = function(t)
-          print 'Terminal created!'
-        end,
-        on_open = function(t)
-          print 'Terminal opened!'
-        end,
-        on_close = function(t)
-          print 'Terminal closed!'
-        end,
-
-        -- 终端输出回调（处理标准输出、标准错误）
-        on_stdout = function(t, job, data, name)
-          print('stdout:', data)
-        end,
-        on_stderr = function(t, job, data, name)
-          print('stderr:', data)
-        end,
-
-        -- 进程退出时的回调
-        on_exit = function(t, job, exit_code, name)
-          print('Process exited with code', exit_code)
-        end,
-
         -- 隐藏行号
         hide_numbers = true,
 
@@ -155,5 +364,156 @@ return {
         },
       }
     end,
+  },
+
+  -- Cargo.toml 依赖版本提示（Rust）
+  {
+    'saecki/crates.nvim',
+    event = 'BufRead Cargo.toml',
+    opts = {
+      completion = {
+        crates = { enabled = true },
+      },
+    },
+  },
+  {
+    'mrcjkb/rustaceanvim',
+    version = '^8',
+    lazy = false,
+    dependencies = { 'mason-org/mason.nvim' },
+    init = function()
+      vim.g.rustaceanvim = {
+        server = {
+          cmd = resolve_rust_analyzer_cmd,
+          default_settings = {
+            ['rust-analyzer'] = {
+              cargo = {
+                allFeatures = true,
+                targetDir = true,
+              },
+              check = {
+                command = 'clippy',
+                features = 'all',
+                extraArgs = { '--no-deps' },
+              },
+              inlayHints = {
+                bindingModeHints = {
+                  enable = true,
+                },
+                closureReturnTypeHints = {
+                  enable = 'always',
+                },
+                lifetimeElisionHints = {
+                  enable = 'skip_trivial',
+                },
+                parameterHints = {
+                  enable = true,
+                },
+                typeHints = {
+                  enable = true,
+                },
+              },
+            },
+          },
+        },
+      }
+    end,
+  },
+
+  -- Python 虚拟环境切换
+  {
+    'linux-cultist/venv-selector.nvim',
+    dependencies = { 'nvim-telescope/telescope.nvim' },
+    cmd = 'VenvSelect',
+    keys = {
+      { '<leader>tv', '<cmd>VenvSelect<CR>', desc = '[T]oggle [V]env selector' },
+    },
+    opts = {},
+  },
+
+  -- CMake 项目支持（C/C++）
+  {
+    'Civitasv/cmake-tools.nvim',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    cmd = { 'CMakeGenerate', 'CMakeBuild', 'CMakeRun', 'CMakeDebug', 'CMakeSelectBuildType', 'CMakeSelectBuildTarget' },
+    keys = {
+      { '<leader>cg', '<cmd>CMakeGenerate<CR>', desc = '[C]Make [G]enerate' },
+      { '<leader>cb', '<cmd>CMakeBuild<CR>', desc = '[C]Make [B]uild' },
+      { '<leader>cr', '<cmd>CMakeRun<CR>', desc = '[C]Make [R]un' },
+      { '<leader>cd', '<cmd>CMakeDebug<CR>', desc = '[C]Make [D]ebug' },
+      { '<leader>ct', '<cmd>CMakeSelectBuildType<CR>', desc = '[C]Make select build [T]ype' },
+    },
+    opts = {},
+  },
+
+  -- 测试框架（支持 pytest + cargo test）
+  {
+    'nvim-neotest/neotest',
+    dependencies = {
+      'nvim-neotest/nvim-nio',
+      'nvim-lua/plenary.nvim',
+      'antoinemadec/FixCursorHold.nvim',
+      'nvim-treesitter/nvim-treesitter',
+      'nvim-neotest/neotest-python',
+      'rouge8/neotest-rust',
+    },
+    keys = {
+      {
+        '<leader>Tr',
+        function()
+          require('neotest').run.run()
+        end,
+        desc = '[T]est [R]un nearest',
+      },
+      {
+        '<leader>Tf',
+        function()
+          require('neotest').run.run(vim.fn.expand '%')
+        end,
+        desc = '[T]est run [F]ile',
+      },
+      {
+        '<leader>Td',
+        function()
+          require('neotest').run.run { strategy = 'dap' }
+        end,
+        desc = '[T]est [D]ebug nearest',
+      },
+      {
+        '<leader>Ts',
+        function()
+          require('neotest').summary.toggle()
+        end,
+        desc = '[T]est [S]ummary toggle',
+      },
+      {
+        '<leader>To',
+        function()
+          require('neotest').output_panel.toggle()
+        end,
+        desc = '[T]est [O]utput toggle',
+      },
+      {
+        '<leader>Tx',
+        function()
+          require('neotest').run.stop()
+        end,
+        desc = '[T]est stop [X]',
+      },
+    },
+    config = function()
+      require('neotest').setup {
+        adapters = {
+          require 'neotest-python' { dap = { justMyCode = false } },
+          require 'neotest-rust' {},
+        },
+      }
+    end,
+  },
+
+  -- 顶部固定显示当前函数/类上下文
+  {
+    'nvim-treesitter/nvim-treesitter-context',
+    opts = { max_lines = 3 },
   },
 }
