@@ -89,6 +89,7 @@ P.S. You can delete this when you're done too. It's your config now! :)
 --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
 vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
+vim.g.man_hardwrap = false
 -- NOTE: add shift here:
 vim.opt.shiftwidth = 4 -- 自动缩进宽度
 vim.opt.tabstop = 4 -- tab显示宽度
@@ -184,8 +185,12 @@ vim.o.confirm = true
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 -- close the dignostics for this buffer
 -- 在 init.lua 中添加
-vim.keymap.set('n', '<leader>gbdd', '<cmd>lua vim.diagnostic.disable(0)<CR>', { desc = 'Disable diagnostics for current buffer' })
-vim.keymap.set('n', '<leader>gbde', '<cmd>lua vim.diagnostic.enable(0)<CR>', { desc = 'Enable diagnostics for current buffer' })
+vim.keymap.set('n', '<leader>gbdd', function()
+  vim.diagnostic.enable(false, { bufnr = 0 })
+end, { desc = 'Disable diagnostics for current buffer' })
+vim.keymap.set('n', '<leader>gbde', function()
+  vim.diagnostic.enable(true, { bufnr = 0 })
+end, { desc = 'Enable diagnostics for current buffer' })
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 vim.keymap.set('n', 'gl', function()
@@ -258,6 +263,17 @@ local function run_make_target(target)
   end
 end
 
+local function has_clang_format(bufnr)
+  local filetype = vim.bo[bufnr].filetype
+  if filetype ~= 'c' and filetype ~= 'cpp' then
+    return false
+  end
+
+  local bufname = vim.api.nvim_buf_get_name(bufnr)
+  local dir = bufname ~= '' and vim.fs.dirname(bufname) or vim.uv.cwd()
+  return dir and vim.fs.find({ '.clang-format', '_clang-format' }, { upward = true, path = dir })[1] ~= nil
+end
+
 vim.api.nvim_create_autocmd('FileType', {
   desc = 'Buffer-local C and Makefile workflow',
   group = vim.api.nvim_create_augroup('kickstart-c-make', { clear = true }),
@@ -277,6 +293,12 @@ vim.api.nvim_create_autocmd('FileType', {
       bo.shiftwidth = 4
       bo.softtabstop = 4
       bo.cindent = true
+
+      if not has_clang_format(event.buf) then
+        pcall(function()
+          require('guess-indent').set_from_buffer(event.buf, false, true)
+        end)
+      end
     end
 
     local map = function(lhs, target, desc)
@@ -338,7 +360,7 @@ else
       'nmac427/guess-indent.nvim',
       config = function()
         require('guess-indent').setup {
-          filetype_exclude = { 'make' },
+          filetype_exclude = { 'c', 'cpp', 'cmake', 'cuda', 'make', 'objc', 'objcpp' },
         }
       end,
     },
@@ -872,6 +894,15 @@ else
             --
             -- When you move your cursor, the highlights will be cleared (the second autocommand).
             local client = vim.lsp.get_client_by_id(event.data.client_id)
+            if client and client.name == 'clangd' then
+              map('<leader>cH', function()
+                vim.cmd.LspClangdSwitchSourceHeader()
+              end, 'Clangd Switch Source/Header')
+              map('<leader>cI', function()
+                vim.cmd.LspClangdShowSymbolInfo()
+              end, 'Clangd Symbol [I]nfo')
+            end
+
             if client and client_supports_method(client, vim.lsp.protocol.Methods.textDocument_documentHighlight, event.buf) then
               local highlight_augroup = vim.api.nvim_create_augroup('kickstart-lsp-highlight', { clear = false })
               vim.api.nvim_create_autocmd({ 'CursorHold', 'CursorHoldI' }, {
@@ -978,7 +1009,7 @@ else
               'clangd',
               '--background-index',
               '--clang-tidy',
-              '--header-insertion=never',
+              '--header-insertion=iwyu',
               '--completion-style=detailed',
             },
             init_options = {
@@ -1075,6 +1106,12 @@ else
         {
           '<leader>f',
           function()
+            local bufnr = vim.api.nvim_get_current_buf()
+            if (vim.bo[bufnr].filetype == 'c' or vim.bo[bufnr].filetype == 'cpp') and not has_clang_format(bufnr) then
+              vim.notify('No .clang-format found for this C/C++ buffer; skipping format.', vim.log.levels.WARN)
+              return
+            end
+
             require('conform').format {
               async = false,
               lsp_format = 'fallback',
@@ -1090,13 +1127,8 @@ else
         format_on_save = function(bufnr)
           local filetype = vim.bo[bufnr].filetype
 
-          if filetype == 'c' or filetype == 'cpp' then
-            local bufname = vim.api.nvim_buf_get_name(bufnr)
-            local dir = bufname ~= '' and vim.fs.dirname(bufname) or vim.uv.cwd()
-            local has_clang_format = dir and vim.fs.find({ '.clang-format', '_clang-format' }, { upward = true, path = dir })[1] ~= nil
-            if not has_clang_format then
-              return nil
-            end
+          if (filetype == 'c' or filetype == 'cpp') and not has_clang_format(bufnr) then
+            return nil
           end
 
           if filetype == 'make' then
@@ -1399,6 +1431,8 @@ else
         ensure_installed = {
           'bash',
           'c',
+          'cmake',
+          'cpp',
           'diff',
           'html',
           'javascript',

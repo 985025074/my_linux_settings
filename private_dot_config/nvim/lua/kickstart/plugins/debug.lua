@@ -179,6 +179,49 @@ return {
       return vim.fn.input('Path to executable: ', executable, 'file')
     end
 
+    local function cpp_executable_path()
+      local ok, cmake = pcall(require, 'cmake-tools')
+      if ok then
+        local launch_target = cmake.get_launch_target_path()
+        if type(launch_target) == 'string' and launch_target ~= '' then
+          return launch_target
+        end
+
+        local build_target = cmake.get_build_target_path()
+        if type(build_target) == 'string' and build_target ~= '' then
+          return build_target
+        end
+      end
+
+      local current_file = vim.api.nvim_buf_get_name(0)
+      local current_stem = current_file ~= '' and vim.fn.fnamemodify(current_file, ':t:r') or 'a.out'
+      local cwd = vim.fn.getcwd()
+      local candidates = {
+        cwd .. '/build/' .. current_stem,
+        cwd .. '/out/Debug/' .. current_stem,
+        cwd .. '/out/Release/' .. current_stem,
+        cwd .. '/' .. current_stem,
+        cwd .. '/a.out',
+      }
+
+      for _, candidate in ipairs(candidates) do
+        if uv.fs_stat(candidate) then
+          return candidate
+        end
+      end
+
+      return vim.fn.input('Path to executable: ', cwd .. '/build/' .. current_stem, 'file')
+    end
+
+    local function prompt_program_args()
+      local input = vim.fn.input 'Arguments: '
+      if input == nil or vim.trim(input) == '' then
+        return {}
+      end
+
+      return vim.split(vim.trim(input), '%s+', { trimempty = true })
+    end
+
     require('mason-nvim-dap').setup {
       -- Makes a best effort to setup the various debuggers with
       -- reasonable debug configurations
@@ -267,6 +310,21 @@ return {
       },
     }
 
+    local cpp_dap_configurations = {
+      {
+        name = 'Launch C/C++ binary (auto)',
+        type = 'codelldb',
+        request = 'launch',
+        program = cpp_executable_path,
+        cwd = '${workspaceFolder}',
+        stopOnEntry = false,
+        args = prompt_program_args,
+      },
+    }
+
+    dap.configurations.c = vim.deepcopy(cpp_dap_configurations)
+    dap.configurations.cpp = vim.deepcopy(cpp_dap_configurations)
+
     local debugpy_python = vim.fn.stdpath 'data' .. '/mason/packages/debugpy/venv/bin/python'
     if not uv.fs_stat(debugpy_python) then
       debugpy_python = 'python3'
@@ -274,5 +332,7 @@ return {
 
     require('dap-python').setup(debugpy_python)
     require('dap-python').test_runner = 'pytest'
+
+    -- .vscode/launch.json 会由 nvim-dap 的 provider 在 dap.continue() 时按需读取
   end,
 }

@@ -363,6 +363,7 @@ return {
           horizontal_breakpoint = 100, -- 当屏幕宽度小于100列时终端堆叠
         },
       }
+
     end,
   },
 
@@ -434,16 +435,65 @@ return {
   -- CMake 项目支持（C/C++）
   {
     'Civitasv/cmake-tools.nvim',
-    dependencies = { 'nvim-lua/plenary.nvim' },
-    cmd = { 'CMakeGenerate', 'CMakeBuild', 'CMakeRun', 'CMakeDebug', 'CMakeSelectBuildType', 'CMakeSelectBuildTarget' },
+    dependencies = {
+      'nvim-lua/plenary.nvim',
+      'stevearc/overseer.nvim',
+      'akinsho/toggleterm.nvim',
+    },
+    cmd = {
+      'CMakeGenerate',
+      'CMakeBuild',
+      'CMakeRun',
+      'CMakeDebug',
+      'CMakeRunTest',
+      'CMakeSettings',
+      'CMakeSelectBuildType',
+      'CMakeSelectBuildTarget',
+      'CMakeSelectBuildPreset',
+      'CMakeSelectLaunchTarget',
+    },
     keys = {
       { '<leader>cg', '<cmd>CMakeGenerate<CR>', desc = '[C]Make [G]enerate' },
       { '<leader>cb', '<cmd>CMakeBuild<CR>', desc = '[C]Make [B]uild' },
       { '<leader>cr', '<cmd>CMakeRun<CR>', desc = '[C]Make [R]un' },
       { '<leader>cd', '<cmd>CMakeDebug<CR>', desc = '[C]Make [D]ebug' },
       { '<leader>ct', '<cmd>CMakeSelectBuildType<CR>', desc = '[C]Make select build [T]ype' },
+      { '<leader>cT', '<cmd>CMakeSelectBuildTarget<CR>', desc = '[C]Make select build [T]arget' },
+      { '<leader>cL', '<cmd>CMakeSelectLaunchTarget<CR>', desc = '[C]Make select [L]aunch target' },
+      { '<leader>cP', '<cmd>CMakeSelectBuildPreset<CR>', desc = '[C]Make select build [P]reset' },
+      { '<leader>cR', '<cmd>CMakeRunTest<CR>', desc = '[C]Make run tests' },
+      { '<leader>cS', '<cmd>CMakeSettings<CR>', desc = '[C]Make [S]ettings' },
     },
-    opts = {},
+    opts = {
+      cmake_regenerate_on_save = true,
+      cmake_generate_options = { '-DCMAKE_EXPORT_COMPILE_COMMANDS=1' },
+      cmake_compile_commands_options = {
+        action = 'soft_link',
+        target = vim.loop.cwd(),
+      },
+      cmake_executor = {
+        name = 'overseer',
+        opts = {},
+      },
+      cmake_runner = {
+        name = 'toggleterm',
+        opts = {
+          direction = 'horizontal',
+          close_on_exit = false,
+          auto_scroll = true,
+          singleton = true,
+        },
+      },
+      cmake_dap_configuration = {
+        name = 'CMake target',
+        type = 'codelldb',
+        request = 'launch',
+        stopOnEntry = false,
+        runInTerminal = true,
+        cwd = '${workspaceFolder}',
+      },
+      cmake_virtual_text_support = true,
+    },
   },
 
   -- 测试框架（支持 pytest + cargo test）
