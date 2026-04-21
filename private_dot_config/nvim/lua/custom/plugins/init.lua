@@ -310,14 +310,14 @@ return {
 
         -- 终端高亮设置
         highlights = {
-          Normal = { guibg = '#2E3440' }, -- 设置终端背景颜色为暗色
+          Normal = { guibg = 'NONE' }, -- 跟随终端透明背景
           NormalFloat = { link = 'Normal' }, -- 浮动窗口继承Normal的样式
-          FloatBorder = { guifg = '#81A1C1', guibg = '#2E3440' }, -- 设置浮动窗口边框颜色
+          FloatBorder = { guifg = '#81A1C1', guibg = 'NONE' }, -- 边框保留颜色，但不填背景
         },
 
         -- 终端背景阴影设置
-        shade_terminals = true, -- 启用背景阴影
-        shading_factor = -30, -- 阴影强度
+        shade_terminals = false, -- 允许透出 kitty 背景
+        shading_factor = 0,
         start_in_insert = true, -- 启动时进入插入模式
         insert_mappings = true, -- 插入模式下启用映射
         terminal_mappings = true, -- 终端模式下启用映射
