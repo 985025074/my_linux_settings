@@ -24,9 +24,27 @@ return {
       },
     },
     filesystem = {
+      commands = {
+        copy_absolute_path = function(state)
+          local node = state.tree:get_node()
+          local path = node.path or node:get_id()
+          vim.fn.setreg('+', path)
+          vim.fn.setreg('"', path)
+          vim.notify('Copied path: ' .. path)
+        end,
+        copy_relative_path = function(state)
+          local node = state.tree:get_node()
+          local path = vim.fn.fnamemodify(node.path or node:get_id(), ':.')
+          vim.fn.setreg('+', path)
+          vim.fn.setreg('"', path)
+          vim.notify('Copied relative path: ' .. path)
+        end,
+      },
       window = {
         mappings = {
           ['\\'] = 'close_window',
+          ['Y'] = 'copy_absolute_path',
+          ['gy'] = 'copy_relative_path',
         },
       },
     },

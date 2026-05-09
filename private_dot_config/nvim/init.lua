@@ -274,6 +274,21 @@ local function has_clang_format(bufnr)
   return dir and vim.fs.find({ '.clang-format', '_clang-format' }, { upward = true, path = dir })[1] ~= nil
 end
 
+local function has_cmake_format_config(bufnr)
+  local filetype = vim.bo[bufnr].filetype
+  if filetype ~= 'cmake' then
+    return false
+  end
+
+  local bufname = vim.api.nvim_buf_get_name(bufnr)
+  local dir = bufname ~= '' and vim.fs.dirname(bufname) or vim.uv.cwd()
+  return dir
+    and vim.fs.find({ '.cmake-format', '.cmake-format.py', '.cmake-format.yaml', '.cmake-format.yml', '.cmake-format.json' }, {
+      upward = true,
+      path = dir,
+    })[1] ~= nil
+end
+
 vim.api.nvim_create_autocmd('FileType', {
   desc = 'Buffer-local C and Makefile workflow',
   group = vim.api.nvim_create_augroup('kickstart-c-make', { clear = true }),
@@ -311,6 +326,19 @@ vim.api.nvim_create_autocmd('FileType', {
     map('<leader>mr', 'run', '[M]ake [R]un')
     map('<leader>mt', 'test', '[M]ake [T]est')
     map('<leader>mc', 'clean', '[M]ake [C]lean')
+  end,
+})
+
+vim.api.nvim_create_autocmd('FileType', {
+  desc = 'Buffer-local CMake editing defaults',
+  group = vim.api.nvim_create_augroup('kickstart-cmake-editing', { clear = true }),
+  pattern = 'cmake',
+  callback = function(event)
+    local bo = vim.bo[event.buf]
+    bo.expandtab = true
+    bo.tabstop = 2
+    bo.shiftwidth = 2
+    bo.softtabstop = 2
   end,
 })
 
@@ -445,6 +473,7 @@ else
         -- Document existing key chains
         spec = {
           { '<leader>s', group = '[S]earch' },
+          { '<leader>c', group = '[C]Make / [C]lang' },
           { '<leader>t', group = '[T]oggle' },
           { '<leader>T', group = '[T]est' },
           { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
@@ -1016,6 +1045,8 @@ else
               clangdFileStatus = true,
             },
           },
+          -- neocmakelsp ships prebuilt binaries in Mason, avoiding cmake-language-server's Python <3.14 requirement.
+          neocmake = {},
           -- gopls = {},
           -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
           --
@@ -1076,6 +1107,7 @@ else
         local ensure_installed = vim.tbl_keys(servers or {})
         vim.list_extend(ensure_installed, {
           'clang-format',
+          'cmakelang',
           'checkmake',
           'stylua', -- Used to format Lua code
           'rustfmt',
@@ -1135,6 +1167,10 @@ else
             return nil
           end
 
+          if filetype == 'cmake' and not has_cmake_format_config(bufnr) then
+            return nil
+          end
+
           return {
             timeout_ms = 3000,
             lsp_format = 'fallback',
@@ -1142,6 +1178,7 @@ else
         end,
         formatters_by_ft = {
           c = { 'clang_format' },
+          cmake = { 'cmake_format' },
           cpp = { 'clang_format' },
           lua = { 'stylua' },
           -- Conform can also run multiple formatters sequentially

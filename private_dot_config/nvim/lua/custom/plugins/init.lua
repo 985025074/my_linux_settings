@@ -48,6 +48,58 @@ local function resolve_rust_analyzer_cmd()
   return { 'rust-analyzer' }
 end
 
+local function run_current_jupytext_cell()
+  local bufnr = 0
+  local total_lines = vim.api.nvim_buf_line_count(bufnr)
+  local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
+
+  local function get_line(lnum)
+    return vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, false)[1] or ''
+  end
+
+  local function is_cell_marker(line)
+    return line:match '^%s*#%s*%%%%' ~= nil
+  end
+
+  local start_line = cursor_line
+  while start_line > 1 and not is_cell_marker(get_line(start_line)) do
+    start_line = start_line - 1
+  end
+  if is_cell_marker(get_line(start_line)) then
+    start_line = start_line + 1
+  else
+    start_line = 1
+  end
+
+  local end_line = cursor_line + 1
+  while end_line <= total_lines and not is_cell_marker(get_line(end_line)) do
+    end_line = end_line + 1
+  end
+  end_line = end_line - 1
+
+  while start_line <= end_line and get_line(start_line):match '^%s*$' do
+    start_line = start_line + 1
+  end
+  while end_line >= start_line and get_line(end_line):match '^%s*$' do
+    end_line = end_line - 1
+  end
+
+  if start_line > end_line then
+    vim.notify('当前 Jupytext cell 没有可执行代码', vim.log.levels.WARN)
+    return
+  end
+
+  vim.fn.MoltenEvaluateRange(start_line, end_line)
+end
+
+local function jump_jupytext_cell(direction)
+  local flags = direction == 'prev' and 'bW' or 'W'
+  local target = vim.fn.search([[^\s*#\s*%%]], flags)
+  if target == 0 then
+    vim.notify(direction == 'prev' and '前面没有 Jupyter cell' or '后面没有 Jupyter cell', vim.log.levels.INFO)
+  end
+end
+
 return {
   {
     'OXY2DEV/markview.nvim',
@@ -432,6 +484,145 @@ return {
     opts = {},
   },
 
+  -- Jupyter notebook 支持：Jupytext 负责 .ipynb <-> 文本，Molten 负责连接 kernel 执行代码。
+  {
+    'GCBallesteros/jupytext.nvim',
+    lazy = false,
+    config = function()
+      require('jupytext').setup()
+
+      local jupyter_cell_group = vim.api.nvim_create_augroup('custom-jupyter-cell-keymaps', { clear = true })
+      vim.api.nvim_create_autocmd('FileType', {
+        group = jupyter_cell_group,
+        pattern = '*',
+        callback = function(ev)
+          local name = vim.api.nvim_buf_get_name(ev.buf)
+          if not name:match '%.ipynb$' then
+            return
+          end
+
+          vim.keymap.set('n', ']]', function()
+            jump_jupytext_cell 'next'
+          end, { buffer = ev.buf, desc = 'Next Jupyter cell', silent = true })
+          vim.keymap.set('n', '[[', function()
+            jump_jupytext_cell 'prev'
+          end, { buffer = ev.buf, desc = 'Previous Jupyter cell', silent = true })
+        end,
+      })
+
+      vim.api.nvim_create_autocmd('BufWritePost', {
+        group = jupyter_cell_group,
+        pattern = '*.ipynb',
+        callback = function()
+          local ok, status = pcall(require, 'molten.status')
+          if ok and status.initialized() == 'Molten' then
+            vim.cmd 'MoltenExportOutput!'
+          end
+        end,
+      })
+
+      vim.api.nvim_create_user_command('NewNotebook', function(opts)
+        local path = opts.args
+        if not path:match '%.ipynb$' then
+          path = path .. '.ipynb'
+        end
+
+        if vim.fn.filereadable(path) == 1 then
+          vim.cmd.edit(vim.fn.fnameescape(path))
+          return
+        end
+
+        local notebook = {
+          cells = {},
+          metadata = {
+            kernelspec = {
+              display_name = 'Python 3',
+              language = 'python',
+              name = 'python3',
+            },
+            language_info = {
+              codemirror_mode = {
+                name = 'ipython',
+              },
+              file_extension = '.py',
+              mimetype = 'text/x-python',
+              name = 'python',
+              nbconvert_exporter = 'python',
+              pygments_lexer = 'ipython3',
+            },
+          },
+          nbformat = 4,
+          nbformat_minor = 5,
+        }
+
+        local parent = vim.fn.fnamemodify(path, ':h')
+        if parent ~= '' and vim.fn.isdirectory(parent) == 0 then
+          vim.fn.mkdir(parent, 'p')
+        end
+
+        local file = assert(io.open(path, 'w'))
+        file:write(vim.json.encode(notebook))
+        file:close()
+        vim.cmd.edit(vim.fn.fnameescape(path))
+      end, {
+        nargs = 1,
+        complete = 'file',
+      })
+    end,
+  },
+  {
+    '3rd/image.nvim',
+    event = 'VeryLazy',
+    build = false,
+    opts = {
+      backend = 'kitty',
+      processor = 'magick_cli',
+      integrations = {
+        markdown = { enabled = false },
+        neorg = { enabled = false },
+        asciidoc = { enabled = false },
+      },
+    },
+  },
+  {
+    'benlubas/molten-nvim',
+    version = '^1.0.0',
+    lazy = false,
+    build = ':UpdateRemotePlugins',
+    dependencies = { '3rd/image.nvim' },
+    keys = {
+      { '<leader>ji', '<cmd>MoltenInit<CR>', desc = '[J]upyter [I]nit kernel' },
+      { '<leader>jI', '<cmd>MoltenInfo<CR>', desc = '[J]upyter [I]nfo' },
+      { '<leader>je', '<cmd>MoltenEvaluateOperator<CR>', desc = '[J]upyter [E]valuate operator' },
+      { '<leader>jc', run_current_jupytext_cell, desc = '[J]upyter run current [C]ell' },
+      { '<leader>jl', '<cmd>MoltenEvaluateLine<CR>', desc = '[J]upyter run [L]ine' },
+      { '<leader>jv', ':<C-u>MoltenEvaluateVisual<CR>gv', mode = 'v', desc = '[J]upyter run [V]isual' },
+      { '<leader>jr', '<cmd>MoltenReevaluateCell<CR>', desc = '[J]upyter [R]e-evaluate cell' },
+      { '<leader>ja', '<cmd>MoltenReevaluateAll<CR>', desc = '[J]upyter re-evaluate [A]ll' },
+      { '<leader>jo', '<cmd>noautocmd MoltenEnterOutput<CR>', desc = '[J]upyter open [O]utput' },
+      { '<leader>jO', '<cmd>MoltenShowOutput<CR>', desc = '[J]upyter show [O]utput' },
+      { '<leader>jh', '<cmd>MoltenHideOutput<CR>', desc = '[J]upyter [H]ide output' },
+      { '<leader>j]', '<cmd>MoltenNext<CR>', desc = '[J]upyter next output cell' },
+      { '<leader>j[', '<cmd>MoltenPrev<CR>', desc = '[J]upyter previous output cell' },
+      { '<leader>jd', '<cmd>MoltenDelete<CR>', desc = '[J]upyter [D]elete cell output' },
+      { '<leader>jD', '<cmd>MoltenDelete!<CR>', desc = '[J]upyter [D]elete all outputs' },
+      { '<leader>jx', '<cmd>MoltenInterrupt<CR>', desc = '[J]upyter interrupt e[X]ecution' },
+      { '<leader>jR', '<cmd>MoltenRestart!<CR>', desc = '[J]upyter [R]estart kernel' },
+      { '<leader>jE', '<cmd>MoltenExportOutput!<CR>', desc = '[J]upyter [E]xport outputs' },
+      { '<leader>jM', '<cmd>MoltenImportOutput<CR>', desc = '[J]upyter i[M]port outputs' },
+      { '<leader>jP', '<cmd>MoltenImagePopup<CR>', desc = '[J]upyter image [P]opup' },
+      { '<leader>jb', '<cmd>MoltenOpenInBrowser<CR>', desc = '[J]upyter open HTML in [B]rowser' },
+    },
+    init = function()
+      vim.g.molten_image_provider = 'image.nvim'
+      vim.g.molten_output_win_max_height = 18
+      vim.g.molten_auto_open_output = false
+      vim.g.molten_virt_text_output = true
+      vim.g.molten_virt_text_max_lines = 16
+      vim.g.molten_wrap_output = true
+    end,
+  },
+
   -- CMake 项目支持（C/C++）
   {
     'Civitasv/cmake-tools.nvim',
@@ -442,34 +633,62 @@ return {
     },
     cmd = {
       'CMakeGenerate',
+      'CMakeClean',
       'CMakeBuild',
+      'CMakeQuickBuild',
+      'CMakeBuildCurrentFile',
+      'CMakeInstall',
       'CMakeRun',
+      'CMakeQuickRun',
+      'CMakeRunCurrentFile',
       'CMakeDebug',
+      'CMakeDebugCurrentFile',
       'CMakeRunTest',
+      'CMakeOpenCache',
       'CMakeSettings',
+      'CMakeLaunchArgs',
       'CMakeSelectBuildType',
       'CMakeSelectBuildTarget',
+      'CMakeSelectConfigurePreset',
       'CMakeSelectBuildPreset',
+      'CMakeSelectTestPreset',
       'CMakeSelectLaunchTarget',
+      'CMakeSelectKit',
+      'CMakeSelectCwd',
+      'CMakeSelectBuildDir',
     },
     keys = {
       { '<leader>cg', '<cmd>CMakeGenerate<CR>', desc = '[C]Make [G]enerate' },
       { '<leader>cb', '<cmd>CMakeBuild<CR>', desc = '[C]Make [B]uild' },
+      { '<leader>cB', '<cmd>CMakeBuildCurrentFile<CR>', desc = '[C]Make [B]uild current file' },
       { '<leader>cr', '<cmd>CMakeRun<CR>', desc = '[C]Make [R]un' },
+      { '<leader>cf', '<cmd>CMakeRunCurrentFile<CR>', desc = '[C]Make run current [F]ile' },
       { '<leader>cd', '<cmd>CMakeDebug<CR>', desc = '[C]Make [D]ebug' },
+      { '<leader>cD', '<cmd>CMakeDebugCurrentFile<CR>', desc = '[C]Make [D]ebug current file' },
+      { '<leader>cx', '<cmd>CMakeClean<CR>', desc = '[C]Make clean' },
+      { '<leader>ci', '<cmd>CMakeInstall<CR>', desc = '[C]Make [I]nstall' },
+      { '<leader>cc', '<cmd>CMakeOpenCache<CR>', desc = '[C]Make open [C]ache' },
+      { '<leader>ca', '<cmd>CMakeLaunchArgs<CR>', desc = '[C]Make launch [A]rgs' },
       { '<leader>ct', '<cmd>CMakeSelectBuildType<CR>', desc = '[C]Make select build [T]ype' },
       { '<leader>cT', '<cmd>CMakeSelectBuildTarget<CR>', desc = '[C]Make select build [T]arget' },
       { '<leader>cL', '<cmd>CMakeSelectLaunchTarget<CR>', desc = '[C]Make select [L]aunch target' },
+      { '<leader>ck', '<cmd>CMakeSelectKit<CR>', desc = '[C]Make select [K]it' },
+      { '<leader>cp', '<cmd>CMakeSelectConfigurePreset<CR>', desc = '[C]Make select configure [P]reset' },
       { '<leader>cP', '<cmd>CMakeSelectBuildPreset<CR>', desc = '[C]Make select build [P]reset' },
+      { '<leader>cU', '<cmd>CMakeSelectTestPreset<CR>', desc = '[C]Make select test preset' },
       { '<leader>cR', '<cmd>CMakeRunTest<CR>', desc = '[C]Make run tests' },
+      { '<leader>cw', '<cmd>CMakeSelectCwd<CR>', desc = '[C]Make select [W]orkdir' },
+      { '<leader>cO', '<cmd>CMakeSelectBuildDir<CR>', desc = '[C]Make select build dir' },
       { '<leader>cS', '<cmd>CMakeSettings<CR>', desc = '[C]Make [S]ettings' },
     },
     opts = {
-      cmake_regenerate_on_save = true,
+      cmake_regenerate_on_save = false,
       cmake_generate_options = { '-DCMAKE_EXPORT_COMPILE_COMMANDS=1' },
       cmake_compile_commands_options = {
         action = 'soft_link',
-        target = vim.loop.cwd(),
+        target = function()
+          return vim.uv.cwd()
+        end,
       },
       cmake_executor = {
         name = 'overseer',
